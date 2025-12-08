@@ -253,8 +253,21 @@ def evaluate(
     metrics = {}
     auc = None
     if metric_fns:
+        # Convert logits to probabilities for metric calculation
+        # Check if predictions are logits (need sigmoid) or already probabilities
+        import torch.nn.functional as F
+        sample_pred = all_preds[0] if all_preds else None
+        if sample_pred is not None:
+            # If values are outside [0, 1], assume they are logits
+            if sample_pred.min() < 0 or sample_pred.max() > 1:
+                all_preds_probs = [F.sigmoid(p) for p in all_preds]
+            else:
+                all_preds_probs = all_preds
+        else:
+            all_preds_probs = all_preds
+
         for name, fn in metric_fns.items():
-            metrics[name] = fn(all_labels, all_preds)
+            metrics[name] = fn(all_labels, all_preds_probs)
         auc = metrics.get("auc")
 
     return TrainingStats(loss=total_loss / max(steps, 1), auc=auc, metrics=metrics)
