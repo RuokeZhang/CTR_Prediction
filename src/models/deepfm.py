@@ -1,9 +1,14 @@
-"""DeepFM implementation for CTR prediction."""
+"""DeepFM implementation for CTR prediction (PyTorch).
+
+对齐论文《DeepFM: A Factorization-Machine based Neural Network for CTR Prediction》。
+包含三部分：线性项（一阶）、FM 二阶交互、深层 DNN，三者共享同一套 embedding。
+输出为 logits，训练请使用 BCEWithLogitsLoss。
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Sequence
+from typing import Sequence
 
 import torch
 from torch import nn
@@ -59,7 +64,7 @@ class DeepFM(nn.Module):
         self.hidden_dims = config.hidden_dims
         self.num_classes = config.num_classes
         self.dtype = torch.long
-        self.bias = nn.Parameter(torch.randn(1))
+        self.bias = nn.Parameter(torch.zeros(1))
 
         if config.use_cuda and torch.cuda.is_available():
             self.device = torch.device('cuda')
@@ -70,16 +75,16 @@ class DeepFM(nn.Module):
         self.fm_first_order_embeddings = nn.ModuleList(
             [nn.Embedding(feature_size, 1) for feature_size in self.feature_sizes]
         )
-        # Linear term for dense numeric features
-        self.linear_dense = nn.Linear(self.num_numeric, 1, bias=False)
         # FM second order embeddings
         self.fm_second_order_embeddings = nn.ModuleList(
             [nn.Embedding(feature_size, self.embedding_size) for feature_size in self.feature_sizes]
         )
+        # Linear term for dense numeric features
+        self.linear_dense = nn.Linear(self.num_numeric, 1, bias=False)
 
         # Deep part (MLP)
         deep_layers = []
-        input_dim = self.num_numeric + self.num_categorical * self.embedding_size
+        input_dim = self.field_size * self.embedding_size
         for i, out_dim in enumerate(self.hidden_dims):
             deep_layers.append(nn.Linear(input_dim, out_dim))
             deep_layers.append(nn.BatchNorm1d(out_dim))
@@ -88,7 +93,7 @@ class DeepFM(nn.Module):
             deep_layers.append(nn.Dropout(dropout_prob))
             input_dim = out_dim
         self.deep_layers = nn.Sequential(*deep_layers)
-        self.deep_output = nn.Linear(input_dim, self.num_classes)
+        self.deep_output = nn.Linear(input_dim, self.num_classes, bias=False)
 
     def _batch_to_xi_xv(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor]:
         """Convert Batch object to Xi/Xv format.
@@ -130,59 +135,59 @@ class DeepFM(nn.Module):
             - input_data (Xi): A tensor of input's index, shape of (N, field_size, 1)
             - Xv: A tensor of input's value, shape of (N, field_size, 1)
         """
-        # Handle Batch input (DeepFM requires dense features for deep/linear parts)
+        # Handle Batch input (preferred)
         if isinstance(input_data, Batch):
             Xi, Xv = self._batch_to_xi_xv(input_data)
             dense_input = input_data.numerical  # [N, num_numeric]
         else:
-            raise TypeError("DeepFM forward expects a Batch object as input_data.")
+            Xi = input_data
+            if Xv is None:
+                raise ValueError("Xv must be provided when input_data is Xi tensor")
+            dense_input = None
 
-        # FM first order
-        fm_first_order_emb_arr = [
-            (torch.sum(emb(Xi[:, idx, :]), 1).t() * Xv[:, idx]).t()
-            for idx, emb in enumerate(
-                self.fm_first_order_embeddings[self.num_numeric :], start=self.num_numeric
-            )
-        ]
-        if fm_first_order_emb_arr:
-            fm_first_order = torch.cat(fm_first_order_emb_arr, 1)
-            first_order_cat = torch.sum(fm_first_order, dim=1, keepdim=True)
+        Xi = Xi.long()
+
+        # ---------------------------
+        # First-order (linear) part
+        # ---------------------------
+        first_order_list = []
+        for i, emb in enumerate(self.fm_first_order_embeddings):
+            # emb -> [N, 1, 1]; value -> [N,1]
+            w_i = emb(Xi[:, i, :]).squeeze(-1)  # [N,1]
+            v_i = Xv[:, i : i + 1]
+            first_order_list.append(w_i * v_i)
+        first_order_cat = torch.sum(torch.cat(first_order_list, dim=1), dim=1, keepdim=True)
+        if dense_input is not None:
+            first_order_term = first_order_cat + self.linear_dense(dense_input)
         else:
-            first_order_cat = torch.zeros(
-                (dense_input.size(0), 1), device=dense_input.device, dtype=dense_input.dtype
-            )
-        first_order_term = self.linear_dense(dense_input) + first_order_cat
+            first_order_term = first_order_cat
 
-        # FM second order
-        fm_second_order_emb_arr = [
-            (torch.sum(emb(Xi[:, i, :]), 1).t() * Xv[:, i]).t()
-            for i, emb in enumerate(self.fm_second_order_embeddings)
-        ]
-        fm_sum_second_order_emb = sum(fm_second_order_emb_arr)
-        fm_sum_second_order_emb_square = fm_sum_second_order_emb * fm_sum_second_order_emb
-        fm_second_order_emb_square = [item * item for item in fm_second_order_emb_arr]
-        fm_second_order_emb_square_sum = sum(fm_second_order_emb_square)
-        fm_second_order = (fm_sum_second_order_emb_square - fm_second_order_emb_square_sum) * 0.5
+        # ---------------------------
+        # FM second-order part
+        # ---------------------------
+        second_order_list = []
+        for i, emb in enumerate(self.fm_second_order_embeddings):
+            v_i = Xv[:, i : i + 1]  # [N,1]
+            e_i = emb(Xi[:, i, :]).squeeze(1) * v_i  # [N, embed]
+            second_order_list.append(e_i)
+        stacked = torch.stack(second_order_list, dim=1)  # [N, field, embed]
+        sum_emb = torch.sum(stacked, dim=1)  # [N, embed]
+        sum_emb_square = sum_emb * sum_emb
+        square_sum_emb = torch.sum(stacked * stacked, dim=1)
+        fm_second = 0.5 * (sum_emb_square - square_sum_emb)  # [N, embed]
+        fm_second_term = torch.sum(fm_second, dim=1, keepdim=True)  # [N,1]
 
-        # Deep part: concat dense numerical + categorical embeddings
-        if not isinstance(input_data, Batch):
-            raise TypeError("DeepFM forward expects a Batch object for deep part input.")
-        dense_input = input_data.numerical  # [N, num_numeric]
-        cat_second_order_emb_arr = fm_second_order_emb_arr[self.num_numeric :]  # categorical only
-        if cat_second_order_emb_arr:
-            cat_deep = torch.cat(cat_second_order_emb_arr, dim=1)  # [N, num_categorical * embed]
-        else:
-            cat_deep = torch.zeros(
-                (dense_input.size(0), 0), device=dense_input.device, dtype=dense_input.dtype
-            )
-        deep_input = torch.cat([dense_input, cat_deep], dim=1)
+        # ---------------------------
+        # Deep part
+        # ---------------------------
+        deep_input = stacked.reshape(stacked.size(0), -1)  # [N, field*embed]
         deep_out = self.deep_layers(deep_input)
-        deep_logits = self.deep_output(deep_out)
+        deep_logits = self.deep_output(deep_out)  # [N,1]
 
-        # Sum all parts (keep dims for clean broadcasting)
-        second_order_term = torch.sum(fm_second_order, dim=1, keepdim=True)
-        total_sum = first_order_term + second_order_term + deep_logits + self.bias.view(1, 1)
-
+        # ---------------------------
+        # Final logit
+        # ---------------------------
+        total_sum = first_order_term + fm_second_term + deep_logits + self.bias.view(1, 1)
         return total_sum
 
 
