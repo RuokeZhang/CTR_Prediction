@@ -69,12 +69,18 @@ class DeepFM(nn.Module):
             [nn.Embedding(feature_size, self.embedding_size) for feature_size in self.feature_sizes]
         )
 
-        # Deep part
-        all_dims = [self.field_size * self.embedding_size] + list(self.hidden_dims) + [self.num_classes]
-        for i in range(1, len(self.hidden_dims) + 1):
-            setattr(self, 'linear_' + str(i), nn.Linear(all_dims[i-1], all_dims[i]))
-            setattr(self, 'batchNorm_' + str(i), nn.BatchNorm1d(all_dims[i]))
-            setattr(self, 'dropout_' + str(i), nn.Dropout(config.dropout[i-1]))
+        # Deep part (MLP)
+        deep_layers = []
+        input_dim = self.field_size * self.embedding_size
+        for i, out_dim in enumerate(self.hidden_dims):
+            deep_layers.append(nn.Linear(input_dim, out_dim))
+            deep_layers.append(nn.BatchNorm1d(out_dim))
+            deep_layers.append(nn.ReLU())
+            dropout_prob = config.dropout[i] if i < len(config.dropout) else 0.0
+            deep_layers.append(nn.Dropout(dropout_prob))
+            input_dim = out_dim
+        self.deep_layers = nn.Sequential(*deep_layers)
+        self.deep_output = nn.Linear(input_dim, self.num_classes)
 
     def _batch_to_xi_xv(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor]:
         """Convert Batch object to Xi/Xv format.
@@ -144,19 +150,15 @@ class DeepFM(nn.Module):
 
         # Deep part
         deep_emb = torch.cat(fm_second_order_emb_arr, 1)
-        deep_out = deep_emb
-        for i in range(1, len(self.hidden_dims) + 1):
-            deep_out = getattr(self, 'linear_' + str(i))(deep_out)
-            deep_out = getattr(self, 'batchNorm_' + str(i))(deep_out)
-            deep_out = getattr(self, 'dropout_' + str(i))(deep_out)
+        deep_out = self.deep_layers(deep_emb)
+        deep_logits = self.deep_output(deep_out)
 
-        # Sum all parts
-        total_sum = (torch.sum(fm_first_order, 1) +
-                     torch.sum(fm_second_order, 1) +
-                     torch.sum(deep_out, 1) +
-                     self.bias)
+        # Sum all parts (keep dims for clean broadcasting)
+        first_order_term = torch.sum(fm_first_order, dim=1, keepdim=True)
+        second_order_term = torch.sum(fm_second_order, dim=1, keepdim=True)
+        total_sum = first_order_term + second_order_term + deep_logits + self.bias.view(1, 1)
 
-        return total_sum.unsqueeze(-1)
+        return total_sum
 
 
 def train_deepfm_epoch(
