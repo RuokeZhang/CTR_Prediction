@@ -45,15 +45,20 @@ def iterator_factory(
     return factory
 
 
+def parse_dropout(dropout_str: str) -> Sequence[float]:
+    """Parse dropout string like '0.5,0.5' into tuple of floats."""
+    return tuple(float(d) for d in dropout_str.split(",") if d)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train DeepFM on Criteo data.")
     parser.add_argument("--manifest", type=Path, default=Path("data/processed/metadata/split_manifest.json"))
     parser.add_argument("--batch-size", type=int, default=1024)
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--embedding-dim", type=int, default=16)
-    parser.add_argument("--deep-layers", type=str, default="256,128")
-    parser.add_argument("--dropout", type=float, default=0.2)
+    parser.add_argument("--embedding-size", type=int, default=4)
+    parser.add_argument("--hidden-dims", type=str, default="32,32")
+    parser.add_argument("--dropout", type=str, default="0.5,0.5")
     parser.add_argument("--hash-buckets", type=int, default=1 << 18)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--mixed-precision", action="store_true")
@@ -67,18 +72,19 @@ def main() -> None:
     args = parse_args()
     device = torch.device(args.device)
 
-    config = DeepFMConfig(
+    config = DeepFMConfig.from_data_dims(
         num_numeric=len(NUMERIC_COLS),
         num_categorical=len(CATEGORICAL_COLS),
         hash_bucket_size=args.hash_buckets,
-        embedding_dim=args.embedding_dim,
-        deep_layers=parse_layers(args.deep_layers),
-        dropout=args.dropout,
+        embedding_size=args.embedding_size,
+        hidden_dims=parse_layers(args.hidden_dims),
+        dropout=parse_dropout(args.dropout),
+        use_cuda=(device.type == "cuda"),
     )
     model = DeepFM(config).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    loss_fn = nn.BCELoss()
+    loss_fn = nn.BCEWithLogitsLoss()
     scaler = torch.cuda.amp.GradScaler(enabled=args.mixed_precision and device.type == "cuda")
 
     train_iter_factory = iterator_factory(args.manifest, "train", args.batch_size, device, args.limit_chunks)
