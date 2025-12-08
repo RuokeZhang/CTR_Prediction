@@ -18,7 +18,7 @@ def compute_auc(labels, predictions) -> float:
     return float(roc_auc_score(y_true, y_pred))
 
 
-def compute_logloss( predictions,labels) -> float:
+def compute_logloss(labels, predictions) -> float:
     y_true = tensor_to_numpy(labels)
     y_pred = tensor_to_numpy(predictions)
     y_pred = np.clip(y_pred, 1e-7, 1 - 1e-7)
