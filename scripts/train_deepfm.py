@@ -124,46 +124,49 @@ def main() -> None:
             train_loss = train_deepfm_epoch(model, train_iter_factory(), optimizer, loss_fn, scaler)
             scheduler.step()
 
-            logging.info("Epoch %d train_loss=%.4f lr=%.6f", epoch, train_loss, scheduler.get_last_lr()[0])
-
-        # Final test evaluation
-        test_stats = evaluate(
-            model,
-            test_iter_factory(),
-            loss_fn,
-            metric_fns={"auc": compute_auc, "logloss": compute_logloss},
-        )
-        test_auc = test_stats.metrics.get("auc", 0.0)
-        test_logloss = test_stats.metrics.get("logloss", 0.0)
-        logging.info(
-            "Test set: loss=%.4f auc=%.4f logloss=%.4f",
-            test_stats.loss,
-            test_auc,
-            test_logloss,
-        )
-        writer.writerow(
-            {
-                "epoch": "test",
-                "train_loss": "",
-                "test_loss": f"{test_stats.loss:.6f}",
-                "test_auc": f"{test_auc:.6f}",
-                "test_logloss": f"{test_logloss:.6f}",
-            }
-        )
-        # Save checkpoint on best test AUC
-        if test_auc > best_test_auc:
-            best_test_auc = test_auc
-            torch.save(
-                {
-                    "model_state": model.state_dict(),
-                    "config": config.__dict__,
-                    "epoch": args.epochs,
-                    "test_auc": test_auc,
-                    "test_logloss": test_logloss,
-                },
-                args.checkpoint,
+            # Evaluate on test each epoch (for monitoring)
+            test_stats = evaluate(
+                model,
+                test_iter_factory(),
+                loss_fn,
+                metric_fns={"auc": compute_auc, "logloss": compute_logloss},
             )
-            logging.info("Saved test-best checkpoint to %s (test AUC=%.4f)", args.checkpoint, test_auc)
+            test_auc = test_stats.metrics.get("auc", 0.0)
+            test_logloss = test_stats.metrics.get("logloss", 0.0)
+
+            logging.info(
+                "Epoch %d train_loss=%.4f lr=%.6f | test_loss=%.4f test_auc=%.4f test_logloss=%.4f",
+                epoch,
+                train_loss,
+                scheduler.get_last_lr()[0],
+                test_stats.loss,
+                test_auc,
+                test_logloss,
+            )
+            writer.writerow(
+                {
+                    "epoch": epoch,
+                    "train_loss": f"{train_loss:.6f}",
+                    "test_loss": f"{test_stats.loss:.6f}",
+                    "test_auc": f"{test_auc:.6f}",
+                    "test_logloss": f"{test_logloss:.6f}",
+                }
+            )
+
+            # Save checkpoint on best test AUC so far
+            if test_auc > best_test_auc:
+                best_test_auc = test_auc
+                torch.save(
+                    {
+                        "model_state": model.state_dict(),
+                        "config": config.__dict__,
+                        "epoch": epoch,
+                        "test_auc": test_auc,
+                        "test_logloss": test_logloss,
+                    },
+                    args.checkpoint,
+                )
+                logging.info("Saved test-best checkpoint to %s (test AUC=%.4f)", args.checkpoint, test_auc)
 
 
 if __name__ == "__main__":
