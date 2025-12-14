@@ -27,6 +27,8 @@ def load_deepfm_from_checkpoint(
         cfg_dict = ckpt.get("config") or {}
         config = DeepFMConfig(
             feature_sizes=cfg_dict.get("feature_sizes", [hash_bucket_size] * (num_numeric + num_categorical)),
+            num_numeric=cfg_dict.get("num_numeric", num_numeric),
+            num_categorical=cfg_dict.get("num_categorical", num_categorical),
             embedding_size=cfg_dict.get("embedding_size", 8),
             hidden_dims=tuple(cfg_dict.get("hidden_dims", (64, 32))),
             num_classes=cfg_dict.get("num_classes", 1),
