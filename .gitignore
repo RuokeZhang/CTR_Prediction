@@ -27,7 +27,10 @@ data/processed/**/*.csv
 !data/processed/metadata/*.joblib
 criteo_processed.tar.gz
 
+# Model checkpoints and reports
 
+results/*.csv
+results/*.json
 
 # IDE
 .vscode/
