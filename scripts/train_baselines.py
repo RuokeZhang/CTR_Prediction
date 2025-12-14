@@ -39,7 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", choices=["lr", "mlp"], default="lr")
     parser.add_argument("--batch-size", type=int, default=2048)
     parser.add_argument("--epochs", type=int, default=8)
-    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--lr", type=float, default=7e-4)
     parser.add_argument("--dropout", type=float, default=0.1)
     parser.add_argument("--hash-buckets", type=int, default=1 << 18)
     parser.add_argument("--embedding-dim", type=int, default=8, help="Embedding dimension for categorical features")
@@ -48,6 +48,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--log-file", type=Path, default=Path("reports/baseline_metrics.csv"))
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--limit-chunks", type=int, default=None)
+    parser.add_argument("--data-root", type=Path, default=None, help="Optional directory containing parquet chunks (overrides paths in manifest)")
+    parser.add_argument("--checkpoint", type=Path, default=Path("checkpoints/baseline.pt"))
     return parser.parse_args()
 
 
@@ -59,6 +61,10 @@ def iterator_factory(args: argparse.Namespace, split: str) -> Callable[[], Crite
             batch_size=args.batch_size,
             device=torch.device(args.device),
         )
+        if args.data_root is not None:
+            data_root_abs = args.data_root.expanduser().resolve()
+            file_list = iterator._file_map.get(split, [])
+            iterator._file_map[split] = [str(data_root_abs / Path(p).name) for p in file_list]
         if args.limit_chunks:
             iterator._file_map[split] = iterator._file_map[split][: args.limit_chunks]
         return iterator
@@ -106,6 +112,8 @@ def main() -> None:
     val_iter_factory = iterator_factory(args, "val")
 
     args.log_file.parent.mkdir(parents=True, exist_ok=True)
+    args.checkpoint.parent.mkdir(parents=True, exist_ok=True)
+    best_auc = 0.0
     with args.log_file.open("w", newline="") as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=["epoch", "train_loss", "val_loss", "val_auc", "val_logloss"])
         writer.writeheader()
@@ -138,6 +146,28 @@ def main() -> None:
                     "val_logloss": f"{val_logloss:.6f}",
                 }
             )
+
+            if val_auc > best_auc:
+                best_auc = val_auc
+                torch.save(
+                    {
+                        "model_state": model.state_dict(),
+                        "config": {
+                            "model": args.model,
+                            "num_numeric": num_numeric,
+                            "num_categorical": num_categorical,
+                            "hash_bucket_size": args.hash_buckets,
+                            "embedding_dim": args.embedding_dim,
+                            "use_embeddings": args.use_embeddings,
+                            "dropout": args.dropout,
+                        },
+                        "epoch": epoch,
+                        "val_auc": val_auc,
+                        "val_logloss": val_logloss,
+                    },
+                    args.checkpoint,
+                )
+                logging.info("Saved best checkpoint to %s (val AUC=%.4f)", args.checkpoint, val_auc)
 
         logging.info("Training finished. Metrics saved to %s", args.log_file)
 
