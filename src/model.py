@@ -7,49 +7,77 @@ from typing import Optional
 
 import torch
 
-from src.models.deepfm import DeepFM, DeepFMConfig
+class DeepModel(torch.nn.Module):
+
+    def __init__(
+        self,
+        num_numeric: int,
+        num_categorical: int,
+        hash_bucket_size: int,
+        embedding_dim: int = 8,
+        use_embeddings: bool = True,
+    ) -> None:
+        super().__init__()
+        self.num_numeric = num_numeric
+        self.num_categorical = num_categorical
+        self.hash_bucket_size = hash_bucket_size
+        self.embedding_dim = embedding_dim
+        self.use_embeddings = use_embeddings
+
+        if use_embeddings:
+            self.embeddings = torch.nn.ModuleList(
+                [torch.nn.Embedding(hash_bucket_size, embedding_dim) for _ in range(num_categorical)]
+            )
+            input_dim = num_numeric + num_categorical * embedding_dim
+        else:
+            self.embeddings = None
+            input_dim = num_numeric + num_categorical
+
+        self.linear = torch.nn.Linear(input_dim, 1)
+
+    def forward(self, batch) -> torch.Tensor:
+        dense = batch.numerical
+        sparse = batch.categorical
+
+        if self.use_embeddings:
+            emb_list = []
+            for idx, emb_layer in enumerate(self.embeddings):
+                emb_list.append(emb_layer(sparse[:, idx]))
+            categorical_features = torch.cat(emb_list, dim=-1)
+        else:
+            categorical_features = sparse.float()
+
+        features = torch.cat([dense, categorical_features], dim=-1)
+        logits = self.linear(features)
+        return torch.sigmoid(logits)
 
 
-def load_deepfm_from_checkpoint(
+def load_deep_model_from_checkpoint(
     checkpoint_path: Path,
     num_numeric: int = 13,
     num_categorical: int = 26,
     hash_bucket_size: int = 1 << 18,
+    embedding_dim: int = 8,
+    use_embeddings: bool = True,
     device: Optional[torch.device] = None,
-) -> DeepFM:
-    """
-    Load DeepFM model from checkpoint if it exists; otherwise init fresh model.
-    """
+) -> DeepModel:
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = DeepModel(
+        num_numeric=num_numeric,
+        num_categorical=num_categorical,
+        hash_bucket_size=hash_bucket_size,
+        embedding_dim=embedding_dim,
+        use_embeddings=use_embeddings,
+    ).to(device)
 
     if checkpoint_path.exists():
         ckpt = torch.load(checkpoint_path, map_location=device)
-        cfg_dict = ckpt.get("config") or {}
-        config = DeepFMConfig(
-            feature_sizes=cfg_dict.get("feature_sizes", [hash_bucket_size] * (num_numeric + num_categorical)),
-            num_numeric=cfg_dict.get("num_numeric", num_numeric),
-            num_categorical=cfg_dict.get("num_categorical", num_categorical),
-            embedding_size=cfg_dict.get("embedding_size", 8),
-            hidden_dims=tuple(cfg_dict.get("hidden_dims", (64, 32))),
-            num_classes=cfg_dict.get("num_classes", 1),
-            dropout=tuple(cfg_dict.get("dropout", (0.1, 0.1))),
-            use_cuda=device.type == "cuda",
-        )
-        model = DeepFM(config).to(device)
-        model.load_state_dict(ckpt["model_state"])
-    else:
-        config = DeepFMConfig.from_data_dims(
-            num_numeric=num_numeric,
-            num_categorical=num_categorical,
-            hash_bucket_size=hash_bucket_size,
-            embedding_size=8,
-            hidden_dims=(64, 32),
-            dropout=(0.1, 0.1),
-            use_cuda=device.type == "cuda",
-        )
-        model = DeepFM(config).to(device)
+        if isinstance(ckpt, dict) and "model_state" in ckpt:
+            model.load_state_dict(ckpt["model_state"], strict=False)
+        else:
+            model.load_state_dict(ckpt, strict=False)
     return model
 
 
-__all__ = ["load_deepfm_from_checkpoint", "DeepFM", "DeepFMConfig"]
+__all__ = ["DeepModel", "load_deep_model_from_checkpoint"]
 
