@@ -18,12 +18,22 @@ dist/
 
 # Data files (large datasets)
 data/raw/
-data/processed/
+# keep metadata, ignore heavy parquet/feather/csv caches
+data/processed/**/*.parquet
+data/processed/**/*.feather
+data/processed/**/*.csv
+!data/processed/metadata/
+!data/processed/metadata/*.json
+!data/processed/metadata/*.joblib
+criteo_processed.tar.gz
 
 # Model checkpoints and reports
 reports/*.pt
 reports/*.csv
 reports/*.pkl
+checkpoints/*.pt
+results/*.csv
+results/*.json
 
 # IDE
 .vscode/
@@ -41,3 +51,4 @@ Thumbs.db
 
 
 criteo_processed.tar.gz
+

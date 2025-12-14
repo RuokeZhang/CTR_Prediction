@@ -1,0 +1,48 @@
+{
+  "train": [
+    "data/processed/criteo_chunk_0046.parquet",
+    "data/processed/criteo_chunk_0049.parquet",
+    "data/processed/criteo_chunk_0093.parquet",
+    "data/processed/criteo_chunk_0052.parquet",
+    "data/processed/criteo_chunk_0089.parquet",
+    "data/processed/criteo_chunk_0091.parquet",
+    "data/processed/criteo_chunk_0045.parquet",
+    "data/processed/criteo_chunk_0072.parquet",
+    "data/processed/criteo_chunk_0095.parquet",
+    "data/processed/criteo_chunk_0023.parquet",
+    "data/processed/criteo_chunk_0065.parquet",
+    "data/processed/criteo_chunk_0025.parquet",
+    "data/processed/criteo_chunk_0110.parquet",
+    "data/processed/criteo_chunk_0008.parquet",
+    "data/processed/criteo_chunk_0068.parquet",
+    "data/processed/criteo_chunk_0015.parquet",
+    "data/processed/criteo_chunk_0043.parquet",
+    "data/processed/criteo_chunk_0048.parquet",
+    "data/processed/criteo_chunk_0100.parquet",
+    "data/processed/criteo_chunk_0036.parquet",
+    "data/processed/criteo_chunk_0053.parquet",
+    "data/processed/criteo_chunk_0039.parquet",
+    "data/processed/criteo_chunk_0067.parquet",
+    "data/processed/criteo_chunk_0001.parquet",
+    "data/processed/criteo_chunk_0020.parquet",
+    "data/processed/criteo_chunk_0032.parquet",
+    "data/processed/criteo_chunk_0108.parquet"
+  ],
+  "val": [
+    "data/processed/criteo_chunk_0029.parquet",
+    "data/processed/criteo_chunk_0027.parquet",
+    "data/processed/criteo_chunk_0112.parquet",
+    "data/processed/criteo_chunk_0064.parquet",
+    "data/processed/criteo_chunk_0059.parquet",
+    "data/processed/criteo_chunk_0073.parquet"
+  ],
+  "test": [
+    "data/processed/criteo_chunk_0013.parquet",
+    "data/processed/criteo_chunk_0035.parquet",
+    "data/processed/criteo_chunk_0081.parquet",
+    "data/processed/criteo_chunk_0031.parquet",
+    "data/processed/criteo_chunk_0000.parquet",
+    "data/processed/criteo_chunk_0083.parquet",
+    "data/processed/criteo_chunk_0067.parquet"
+  ]
+}

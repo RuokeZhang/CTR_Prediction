@@ -63,8 +63,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--mixed-precision", action="store_true")
     parser.add_argument("--limit-chunks", type=int, default=None)
-    parser.add_argument("--checkpoint", type=Path, default=Path("reports/deepfm.pt"))
-    parser.add_argument("--metrics-file", type=Path, default=Path("reports/deepfm_metrics.csv"))
+    parser.add_argument("--checkpoint", type=Path, default=Path("checkpoints/deepfm.pt"))
+    parser.add_argument("--metrics-file", type=Path, default=Path("results/deepfm_metrics.csv"))
     return parser.parse_args()
 
 
@@ -92,6 +92,7 @@ def main() -> None:
 
     best_auc = 0.0
     args.metrics_file.parent.mkdir(parents=True, exist_ok=True)
+    args.checkpoint.parent.mkdir(parents=True, exist_ok=True)
     with args.metrics_file.open("w", newline="") as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=["epoch", "train_loss", "val_loss", "val_auc", "val_logloss"])
         writer.writeheader()

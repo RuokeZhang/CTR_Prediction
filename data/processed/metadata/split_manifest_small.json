@@ -1,0 +1,14 @@
+{
+  "train": [
+    "data/processed/criteo_chunk_0000.parquet",
+    "data/processed/criteo_chunk_0001.parquet",
+    "data/processed/criteo_chunk_0002.parquet"
+  ],
+  "val": [
+    "data/processed/criteo_chunk_0003.parquet"
+  ],
+  "test": [
+    "data/processed/criteo_chunk_0004.parquet"
+  ]
+}
+

@@ -1,59 +1,61 @@
-# DeepCTR – Click-Through Rate Prediction with DeepFM
+# CTR Prediction with DeepFM
 
-PyTorch implementation of a DeepFM-based CTR prediction stack for the 5GB Criteo
-display advertising dataset. The project includes reproducible preprocessing,
-baseline models (logistic regression, shallow MLP), and a production-style
-DeepFM architecture.
+PyTorch implementation of DeepFM for Criteo-style CTR prediction. Includes chunked preprocessing, train/eval scripts, and a minimal demo.
 
 ## Project Layout
-- `docs/deepctr_plan.md` – bilingual project plan.
-- `src/data/` – ingestion pipeline, batching utilities, and split manifest helpers.
-- `src/models/` – baseline networks and DeepFM implementation.
-- `src/eval/` – shared evaluation metrics.
-- `scripts/` – CLI entrypoints for preprocessing and model training.
-- `reports/` – generated metrics, checkpoints, and written analyses.
-- `data/raw/` – place the downloaded Criteo TSV here (ignored by git).
-- `data/processed/` – auto-generated parquet caches + metadata.
-
-## Handling the 5GB Dataset
-1. Download `train.txt` from the [Criteo Kaggle competition](https://www.kaggle.com/competitions/display-advertising-challenge).
-2. Move the file to `data/raw/criteo_train.txt`.
-3. Run preprocessing with chunked streaming to avoid RAM spikes:
-   ```bash
-   # Make sure virtual environment is activated: source .venv/bin/activate
-   python scripts/preprocess_criteo.py --chunk-size 400000 --limit-chunks 5 --build-manifest  # smoke test
-   python scripts/preprocess_criteo.py --chunk-size 400000 --build-manifest                  # full run
-   ```
-
-## Training
-Logistic regression or shallow MLP:
-```bash
-python scripts/train_baselines.py --model lr --epochs 1 --device cpu
-python scripts/train_baselines.py --model mlp --epochs 3 --device cuda
 ```
-
-DeepFM (with optional mixed precision on GPU):
-```bash
-python scripts/train_deepfm.py --epochs 3 --mixed-precision
+├── README.md
+├── requirements.txt
+├── src/
+│   ├── main.py       # quick demo entry
+│   ├── utils.py      # helpers (dummy batch, save preds)
+│   ├── model.py      # DeepFM loader / wrappers
+│   └── models/…      # actual model implementations
+├── data/             # raw/processed placeholders (Kaggle Criteo link)
+├── checkpoints/      # saved model weights (deepfm.pt)
+├── demo/             # demo script (demo.py)
+├── results/          # generated outputs (metrics, demo predictions)
+└── scripts/          # preprocess/train CLIs
 ```
-
-Each script logs CSV metrics under `reports/` and DeepFM also stores
-`reports/deepfm.pt` checkpoints when validation AUC improves.
 
 ## Setup
-
-1. Create and activate a virtual environment:
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-```
-
-2. Install dependencies and install the project in editable mode:
-```bash
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install --upgrade pip
 pip install -r requirements.txt
-pip install -e .
 ```
 
-This installs the project as a package, allowing `from src.data import ...` imports to work correctly.
+## Data (public source)
+- Download Criteo display advertising train set from Kaggle and place at `data/raw/criteo_train.txt`.
+- Process in chunks (adjust `--limit-chunks` for speed):
+```bash
+python scripts/preprocess_criteo.py --chunk-size 400000 --limit-chunks 5 --build-manifest
+```
+- A tiny split for fast experiments is provided at `data/processed/metadata/split_manifest_small.json`.
+
+## How to Run
+- **Quick demo (no data needed, uses dummy inputs):**
+```bash
+python src/main.py --checkpoint checkpoints/deepfm.pt --output results/demo_predictions.csv
+```
+- **Train DeepFM (GPU or CPU):**
+```bash
+python scripts/train_deepfm.py \
+  --manifest data/processed/metadata/split_manifest_small.json \
+  --batch-size 4096 --epochs 3 --mixed-precision
+```
+Switch `--manifest` to `data/processed/metadata/split_manifest.json` for full data.
+
+## Expected Output
+- Demo writes `results/demo_predictions.csv` with sample click probabilities.
+- Training writes metrics to `results/deepfm_metrics.csv` and best checkpoint to `checkpoints/deepfm.pt`.
+
+## Pre-trained Model
+- Local checkpoint: `checkpoints/deepfm.pt` (copy of latest trained model). Upload to your storage and replace this link: `<YOUR_DOWNLOAD_LINK_HERE>`.
+
+## Acknowledgments
+- Criteo display advertising dataset (Kaggle).
+- DeepFM paper: Guo et al., 2017.
+- Based on PyTorch ecosystem.
 

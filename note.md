@@ -7,5 +7,19 @@ src/data/pipeline.py
 ## baseline
 ### logistic regression
 ### Shallow MLP
+## model
+```
+layer = nn.Linear(in_features, out_features, bias=True)
+```
+这层里有一个 权重矩阵 W，shape = [out_features, in_features]
 
+还有一个 偏置 b，shape = [out_features]（如果 bias=False 就没有）
+```py
+emb = nn.Embedding(num_embeddings=10, embedding_dim=4)
+
+idx = torch.tensor([1, 3, 5])   # [3]
+out = emb(idx)
+print(out.shape)                # torch.Size([3, 4])
+
+```
 
