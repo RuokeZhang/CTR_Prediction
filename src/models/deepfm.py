@@ -153,7 +153,8 @@ class DeepFM(nn.Module):
         first_order_list = []
         for i, emb in enumerate(self.fm_first_order_embeddings):
             # emb -> [N, 1, 1]; value -> [N,1]
-            w_i = emb(Xi[:, i, :]).squeeze(-1)  # [N,1]
+            idx = Xi[:, i, :].remainder(emb.num_embeddings)
+            w_i = emb(idx).squeeze(-1)  # [N,1]
             v_i = Xv[:, i : i + 1]
             first_order_list.append(w_i * v_i)
         first_order_cat = torch.sum(torch.cat(first_order_list, dim=1), dim=1, keepdim=True)
@@ -168,7 +169,8 @@ class DeepFM(nn.Module):
         second_order_list = []
         for i, emb in enumerate(self.fm_second_order_embeddings):
             v_i = Xv[:, i : i + 1]  # [N,1]
-            e_i = emb(Xi[:, i, :]).squeeze(1) * v_i  # [N, embed]
+            idx = Xi[:, i, :].remainder(emb.num_embeddings)
+            e_i = emb(idx).squeeze(1) * v_i  # [N, embed]
             second_order_list.append(e_i)
         stacked = torch.stack(second_order_list, dim=1)  # [N, field, embed]
         sum_emb = torch.sum(stacked, dim=1)  # [N, embed]
